@@ -67,10 +67,7 @@
   ];
 
   function setupScrollListener() {
-    console.log('=== SCROLL LISTENER ACTIVE ===');
-    
-    // Force camera to start at step 0 position
-    console.log('=== FORCING CAMERA TO FIRST STEP ===');
+    // Set initial camera position smoothly
     globalScrollProgress = 0;
     updateCameraFromGlobalProgress(0);
     
@@ -80,44 +77,44 @@
       const storyContainer = document.querySelector('.story-container');
       if (!storyContainer) return;
       
+      // Use more precise scroll calculation
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      
+      // Calculate scroll progress based on story container position
       const containerRect = storyContainer.getBoundingClientRect();
       const containerTop = scrollTop + containerRect.top;
       const containerHeight = storyContainer.scrollHeight;
-      const windowHeight = window.innerHeight;
       
-      // Calculate global progress - start when first step is centered in viewport
-      const firstStepTop = containerTop; // Top of story container
-      const scrollStart = firstStepTop - windowHeight / 2; // When first step centers
-      const scrollEnd = containerTop + containerHeight - windowHeight / 2; // When last step centers
+      // Start progress when container enters viewport, end when it exits
+      const scrollStart = Math.max(0, containerTop - windowHeight);
+      const scrollEnd = containerTop + containerHeight;
       const scrollRange = scrollEnd - scrollStart;
       
-      const currentScroll = scrollTop;
+      // Calculate smooth progress
+      const currentScroll = scrollTop + windowHeight / 2;
+      const rawProgress = (currentScroll - scrollStart) / scrollRange;
+      
+      // Apply smooth clamping without hard stops
       const oldProgress = globalScrollProgress;
+      globalScrollProgress = Math.max(0, Math.min(1, rawProgress));
       
-      // Only start progress when we've scrolled past the first step center point
-      if (currentScroll < scrollStart) {
-        globalScrollProgress = 0;
-      } else {
-        globalScrollProgress = Math.max(0, Math.min(1, (currentScroll - scrollStart) / scrollRange));
+      // Only update if there's a meaningful change
+      if (Math.abs(oldProgress - globalScrollProgress) > 0.001) {
+        updateCameraFromGlobalProgress(globalScrollProgress);
       }
-      
-      if (Math.abs(oldProgress - globalScrollProgress) > 0.01) { // Only log significant changes
-        console.log('Scroll progress changed from', oldProgress.toFixed(3), 'to', globalScrollProgress.toFixed(3));
-      }
-      
-      // Update camera position based on global progress
-      updateCameraFromGlobalProgress(globalScrollProgress);
     }
     
-    // Throttle scroll events for performance
-    let scrollTimeout: number | null = null;
+    // Optimize scroll handling with requestAnimationFrame
+    let ticking = false;
     function handleScroll() {
-      if (scrollTimeout) return;
-      scrollTimeout = requestAnimationFrame(() => {
-        updateCameraFromScroll();
-        scrollTimeout = null;
-      });
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          updateCameraFromScroll();
+          ticking = false;
+        });
+        ticking = true;
+      }
     }
     
     window.addEventListener('scroll', handleScroll);
@@ -130,42 +127,36 @@
   function updateCameraFromGlobalProgress(progress: number) {
     if (!camera) return;
     
-    console.log('updateCameraFromGlobalProgress called with progress:', progress);
-    
     // Clamp progress between 0 and 1
     progress = Math.max(0, Math.min(1, progress));
-    
-    // If progress is 0, ensure we're exactly at the first step
-    if (progress === 0) {
-      const firstStep = storySteps[0];
-      const scaledPosition = [
-        firstStep.cameraPosition[0] * baseDistance,
-        firstStep.cameraPosition[1] * baseDistance,
-        firstStep.cameraPosition[2] * baseDistance
-      ];
-      console.log('Setting camera to first step - position:', scaledPosition, 'rotation:', firstStep.cameraRotation);
-      camera.position.set(scaledPosition[0], scaledPosition[1], scaledPosition[2]);
-      camera.rotation.set(firstStep.cameraRotation[0], firstStep.cameraRotation[1], firstStep.cameraRotation[2]);
-      return;
-    }
     
     // Calculate which segment of the path we're in
     const numSegments = storySteps.length - 1;
     const segmentLength = 1 / numSegments;
-    const segmentIndex = Math.floor(progress / segmentLength);
-    const segmentProgress = (progress % segmentLength) / segmentLength;
     
-    // Handle edge case when progress = 1
-    const fromIndex = Math.min(segmentIndex, storySteps.length - 2);
-    const toIndex = fromIndex + 1;
+    // Find the two keyframes we're interpolating between
+    let fromIndex, toIndex, localProgress;
+    
+    if (progress >= 1) {
+      // At the end, use last two steps
+      fromIndex = storySteps.length - 2;
+      toIndex = storySteps.length - 1;
+      localProgress = 1;
+    } else {
+      // Calculate segment index and local progress within that segment
+      const segmentFloat = progress * numSegments;
+      fromIndex = Math.floor(segmentFloat);
+      toIndex = Math.min(fromIndex + 1, storySteps.length - 1);
+      localProgress = segmentFloat - fromIndex;
+    }
     
     const fromStep = storySteps[fromIndex];
     const toStep = storySteps[toIndex];
     
-    // Smooth interpolation with easing
-    const easedProgress = easeInOutCubic(segmentProgress);
+    // Apply smooth easing to local progress
+    const easedProgress = easeInOutCubic(localProgress);
     
-    // Interpolate position
+    // Interpolate position smoothly
     const position = [
       fromStep.cameraPosition[0] + (toStep.cameraPosition[0] - fromStep.cameraPosition[0]) * easedProgress,
       fromStep.cameraPosition[1] + (toStep.cameraPosition[1] - fromStep.cameraPosition[1]) * easedProgress,
@@ -186,7 +177,7 @@
       position[2] * baseDistance
     ];
     
-    console.log('Setting camera - progress:', progress, 'position:', scaledPosition, 'rotation:', rotation);
+    // Update camera position and rotation smoothly
     camera.position.set(scaledPosition[0], scaledPosition[1], scaledPosition[2]);
     camera.rotation.set(rotation[0], rotation[1], rotation[2]);
   }
@@ -214,7 +205,6 @@
     initialized = true;
     
     try {
-      console.log('=== INITIALIZING THREE.JS ===');
       
       // Import Three.js, GLTFLoader, DRACOLoader, and OrbitControls
       const THREE = await import('three');
@@ -228,28 +218,18 @@
       // Create camera with initial position at first step
       camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
       
-      // Get first step values
+      // Set camera to first step position
       const firstStep = storySteps[0];
-      const initialPosition = [
-        firstStep.cameraPosition[0] * baseDistance,  // 0 * 15 = 0
-        firstStep.cameraPosition[1] * baseDistance,  // 1 * 15 = 15
-        firstStep.cameraPosition[2] * baseDistance   // 3 * 15 = 45
-      ];
-      const initialRotation = [
-        firstStep.cameraRotation[0],  // -0.3
-        firstStep.cameraRotation[1],  // 0
-        firstStep.cameraRotation[2]   // 0
-      ];
-      
-      console.log('INITIAL: Setting camera position:', initialPosition);
-      console.log('INITIAL: Setting camera rotation:', initialRotation);
-      
-      // Set camera to exact first step position immediately
-      camera.position.set(initialPosition[0], initialPosition[1], initialPosition[2]);
-      camera.rotation.set(initialRotation[0], initialRotation[1], initialRotation[2]);
-      
-      console.log('INITIAL: Camera position after set:', camera.position.toArray());
-      console.log('INITIAL: Camera rotation after set:', camera.rotation.toArray());
+      camera.position.set(
+        firstStep.cameraPosition[0] * baseDistance,
+        firstStep.cameraPosition[1] * baseDistance,
+        firstStep.cameraPosition[2] * baseDistance
+      );
+      camera.rotation.set(
+        firstStep.cameraRotation[0],
+        firstStep.cameraRotation[1],
+        firstStep.cameraRotation[2]
+      );
       
       // Initialize global scroll progress
       globalScrollProgress = 0;
@@ -286,25 +266,22 @@
       loader.load(
         'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/LittlestTokyo.glb',
         (gltf) => {
-          console.log('3D model loaded successfully');
           model = gltf.scene;
           
           // Set fixed model scale for consistency across devices
-          const fixedScale = 0.08; // Larger fixed scale for better visibility
+          const fixedScale = 0.08;
           model.scale.set(fixedScale, fixedScale, fixedScale);
-          model.position.y = -2; // Lower the model slightly
+          model.position.y = -2;
           scene.add(model);
           
-          // Setup scroll listener after model is loaded - but delay it
+          // Setup scroll listener after model is loaded
           setTimeout(() => {
-            console.log('=== SETTING UP SCROLL LISTENER ===');
             const cleanup = setupScrollListener();
-            // Store cleanup function for later use
             window.addEventListener('beforeunload', cleanup);
-          }, 500); // Increased delay to let camera stabilize
+          }, 100);
         },
         (progress) => {
-          console.log('Loading progress:', (progress.loaded / progress.total * 100) + '%');
+          // Loading progress (silent)
         },
         (error) => {
           console.error('Error loading 3D model:', error);
@@ -353,7 +330,6 @@
       window.addEventListener('resize', resizeHandler);
       
       isLoading = false;
-      console.log('Three.js initialized successfully');
     } catch (error) {
       hasError = true;
       isLoading = false;
@@ -364,7 +340,6 @@
 
   // Watch for canvas element to be available
   $: if (canvasElement && !initialized) {
-    console.log('Canvas element is available, initializing...');
     initThreeJS();
   }
 
