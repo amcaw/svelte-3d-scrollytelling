@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import armeModel from './assets/models/arme.glb?url';
   
   let hasError = false;
   let errorMessage = '';
@@ -25,7 +26,7 @@
     cameraRotation: [number, number, number];
   }> = [];
   
-  export let modelPath: string = '/models/arme.glb';
+  export let modelPath: string = armeModel;
   export let enableRotation: boolean = false; // Enable auto-rotation
   export let rotationSpeed: number = 0.005; // Rotation speed
 
