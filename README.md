@@ -46,14 +46,19 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 ```
 src/
 ├── lib/
-│   └── ScrollyD.svelte          # Main scrollytelling component
+│   ├── ScrollyD.svelte          # Scrollytelling component for static models
+│   └── ScrollyDAnimated.svelte  # Scrollytelling component for animated models
 ├── WorkingLib/                  # Backup/development components
 │   ├── ThrelteGlobe.svelte     # Original 3D globe component
 │   ├── BelgiumMap.svelte       # 2D map component
 │   └── Helper.svelte           # Debug helper component
 ├── routes/
-│   └── +page.svelte            # Main page
-└── static/                     # Static assets
+│   ├── +page.svelte            # Main page with both components
+│   └── tokyo/
+│       └── +page.svelte        # Standalone Tokyo model page
+└── static/
+    └── models/                 # Local 3D models
+        └── arme.glb           # Animated weapon model
 ```
 
 ## 🎮 How It Works
@@ -94,17 +99,28 @@ npm run check:watch  # Watch mode for type checking
 ### Key Components
 
 #### ScrollyD.svelte
-The main component now features:
+The static model component features:
 - **Flexible Props**: Accepts story steps as props for easy customization
 - **Optimized Layout**: 40% left content area, 60% right 3D scene
-- **1:1 Model Scale**: Natural model proportions without distortion
+- **Fixed Model Scale**: Consistent Tokyo house model at 0.04 scale
 - **Precise Scroll Mapping**: Linear progression from 0 to 1 with perfect top/bottom alignment
 - **Three.js Scene**: Automatic setup with proper aspect ratio handling
 - **Mobile Responsive**: Stacked layout for smaller screens
 
-#### Story Steps Configuration (New Inline Format)
+#### ScrollyDAnimated.svelte
+The animated model component features:
+- **Animation Support**: Scroll-controlled GLB animations instead of looping
+- **Auto-Fitting Camera**: Automatically adjusts camera distance based on model size
+- **Local Model Support**: Loads models from `/static/models/` directory
+- **Animation Mixer**: Controls animation playback based on scroll progress
+- **Enhanced Lighting**: Improved lighting setup for better texture visibility
+- **Debug Logging**: Detailed animation and model structure analysis
+
+#### Usage Examples
+
 ```svelte
 <!-- In your +page.svelte -->
+<!-- Static Tokyo Model -->
 <ScrollyD storySteps={[
   {
     title: "Front View",
@@ -120,6 +136,22 @@ The main component now features:
   },
   // ... more steps
 ]} />
+
+<!-- Animated Local Model -->
+<ScrollyDAnimated 
+  modelPath="/models/arme.glb"
+  enableRotation={false}
+  rotationSpeed={0.01}
+  storySteps={[
+    {
+      title: "Introduction",
+      content: "Welcome to our interactive 3D animation experience.",
+      cameraPosition: [0, 1, 4],
+      cameraRotation: [-0.2, 0, 0]
+    },
+    // ... more steps
+  ]} 
+/>
 ```
 
 ## 🔧 Customization
@@ -143,36 +175,72 @@ Story steps are now defined inline in your page for easy customization:
 
 ### Camera Position Guidelines
 
-- **cameraPosition**: `[x, y, z]` coordinates (multiplied by baseDistance=150)
-  - `x`: Left (-) to Right (+)
-  - `y`: Down (-) to Up (+) 
-  - `z`: Forward (-) to Back (+)
+#### For ScrollyD (Static Models)
+- **cameraPosition**: `[x, y, z]` coordinates (multiplied by baseDistance=8.0)
 - **cameraRotation**: `[rx, ry, rz]` angles in radians
-  - `rx`: Pitch (look up/down)
-  - `ry`: Yaw (look left/right)
-  - `rz`: Roll (tilt)
+- **Model Scale**: Fixed at 0.04 for Tokyo house consistency
 
-### Changing the 3D Model
+#### For ScrollyDAnimated (Animated Models)
+- **cameraPosition**: `[x, y, z]` coordinates (multiplied by auto-calculated baseDistance)
+- **cameraRotation**: `[rx, ry, rz]` angles in radians
+- **Model Scale**: Automatic 1:1 scale with auto-fitting camera distance
+- **baseDistance**: Automatically calculated as `maxModelDimension / 5`
+
+### Camera Coordinate System
+- `x`: Left (-) to Right (+)
+- `y`: Down (-) to Up (+) 
+- `z`: Forward (-) to Back (+)
+- `rx`: Pitch (look up/down)
+- `ry`: Yaw (look left/right)
+- `rz`: Roll (tilt)
+
+### Adding Local 3D Models
+
+1. Place your GLB file in the `static/models/` directory
+2. Use ScrollyDAnimated component with local path:
+
+```svelte
+<ScrollyDAnimated 
+  modelPath="/models/your-model.glb"
+  enableRotation={false}
+  rotationSpeed={0.01}
+  storySteps={[...]}
+/>
+```
+
+### Changing Remote Models (ScrollyD)
 
 Replace the GLB URL in `ScrollyD.svelte`:
 ```javascript
 loader.load('your-model-url.glb', (gltf) => {
   model = gltf.scene;
-  model.scale.set(1, 1, 1); // Keep at 1:1 scale
-  model.position.y = 0;
+  const fixedScale = 0.04; // Adjust as needed
+  model.scale.set(fixedScale, fixedScale, fixedScale);
+  model.position.y = -2;
   scene.add(model);
 });
 ```
 
 ### Layout Customization
 
-Modify these CSS variables in `ScrollyD.svelte`:
+Modify these CSS variables in both components:
 - **Desktop Layout**: `vis-container` left position (default: 30vw)
 - **Foreground Width**: `.foreground` width (default: 40vw)
-- **Base Distance**: `baseDistance` for camera scaling (default: 150)
-- **Model Scale**: Keep at `1, 1, 1` for no distortion
+- **ScrollyD Base Distance**: `baseDistance = 8.0` (fixed for Tokyo house)
+- **ScrollyDAnimated Base Distance**: Auto-calculated based on model size
 
 ## 🆕 Recent Improvements
+
+### v1.2.0 - Dual Component Architecture
+
+- **🎯 Component Separation**: Split functionality into ScrollyD (static models) and ScrollyDAnimated (animated models)
+- **🎬 Scroll-Controlled Animation**: Animations now progress with scroll instead of looping continuously
+- **📁 Local Model Support**: Added support for local GLB files in `/static/models/` directory
+- **🔧 Auto-Fitting Camera**: ScrollyDAnimated automatically adjusts camera distance based on model size
+- **💡 Enhanced Lighting**: Improved lighting setup for better texture visibility in animated models
+- **📊 Debug Logging**: Detailed animation and model structure analysis for development
+- **🏗️ Main Page Integration**: Both components now displayed on the main page with different stories
+- **🎨 Enhanced Styling**: Improved visual hierarchy with section headers and introductory text
 
 ### v1.1.0 - Enhanced Scrollytelling Experience
 
@@ -192,6 +260,7 @@ Modify these CSS variables in `ScrollyD.svelte`:
 - **Aspect Ratio Handling**: Proper camera aspect ratio for the 3D scene area
 - **Initial Load Consistency**: The default view now matches the first story step exactly
 - **Smooth Transitions**: All camera movements use cubic easing for cinematic quality
+- **Animation Control**: Animations are now paused and controlled by scroll progress instead of playing continuously
 
 ## 📦 Building for Production
 

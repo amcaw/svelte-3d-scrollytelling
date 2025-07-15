@@ -13,7 +13,7 @@
   let initialized = false;
   let controls: any;
   let globalScrollProgress = 0; // 0-1 progress through entire journey
-  let baseDistance = 150.0; // Adjusted distance for 1:1 scale model
+  let baseDistance = 8.0; // Optimal distance for Tokyo house
 
   // Props for story steps
   export let storySteps: Array<{
@@ -26,27 +26,34 @@
   function setupScrollListener() {
     // Ensure camera starts at exact first step position
     globalScrollProgress = 0;
-    updateCameraFromGlobalProgress(0);
+    if (storySteps.length > 0) {
+      updateCameraFromGlobalProgress(0);
+    }
     
     function updateCameraFromScroll() {
       if (!camera) return;
       
-      const storyContainer = document.querySelector('.foreground');
-      if (!storyContainer) return;
+      const sectionContainer = canvasElement.closest('.section-container');
+      if (!sectionContainer) return;
       
       // Use more precise scroll calculation
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       
+      // Use the original working approach: calculate relative to foreground container
+      const storyContainer = sectionContainer.querySelector('.foreground');
+      if (!storyContainer) return;
+      
       // Calculate scroll progress based on story container position
       const containerHeight = storyContainer.scrollHeight;
+      const containerTop = (storyContainer as HTMLElement).offsetTop;
       
-      // Start progress at the very beginning of the page
-      const scrollStart = 0;
-      const scrollEnd = containerHeight;
+      // Start progress relative to this container
+      const scrollStart = containerTop;
+      const scrollEnd = containerTop + containerHeight;
       const scrollRange = scrollEnd - scrollStart;
       
       // Calculate progress directly from scroll position
-      const rawProgress = scrollTop / scrollRange;
+      const rawProgress = (scrollTop - scrollStart) / scrollRange;
       
       // Apply smooth clamping without hard stops
       const oldProgress = globalScrollProgress;
@@ -167,17 +174,24 @@
       // Create scene
       scene = new THREE.Scene();
       
-      // Create camera with aspect ratio adjusted for the actual vis-container width
-      const visWidth = window.innerWidth * 0.7; // 70vw since vis-container starts at 30vw
-      camera = new THREE.PerspectiveCamera(75, visWidth / window.innerHeight, 0.1, 1000);
+      // Create camera with aspect ratio adjusted for the display area
+      const visWidth = window.innerWidth; // Full width since vis-container is full width
+      const isMobile = window.innerWidth <= 768;
+      const aspectWidth = isMobile ? visWidth : visWidth * 0.6; // Full width on mobile, 60vw on desktop
+      camera = new THREE.PerspectiveCamera(75, aspectWidth / window.innerHeight, 0.1, 1000);
       
       // Initialize global scroll progress (camera will be set by scroll listener)
       globalScrollProgress = 0;
       
-      // Create renderer with size adjusted for vis-container
+      // Create renderer with full width
       renderer = new THREE.WebGLRenderer({ canvas: canvasElement, antialias: true });
       renderer.setSize(visWidth, window.innerHeight);
       renderer.setClearColor(0x1a1a2e);
+      
+      // Set camera viewport to focus on the right area (desktop) or full width (mobile)
+      const leftOffset = isMobile ? 0 : window.innerWidth * 0.4; // No offset on mobile
+      const rightWidth = isMobile ? window.innerWidth : window.innerWidth * 0.6; // Full width on mobile
+      renderer.setViewport(leftOffset, 0, rightWidth, window.innerHeight);
       
       // Setup OrbitControls for mouse interaction
       controls = new OrbitControls(camera, renderer.domElement);
@@ -208,9 +222,10 @@
         (gltf) => {
           model = gltf.scene;
           
-          // Keep model at natural 1:1 scale to avoid distortion
-          model.scale.set(1, 1, 1);
-          model.position.y = 0;
+          // Set fixed model scale for consistency across devices
+          const fixedScale = 0.04;
+          model.scale.set(fixedScale, fixedScale, fixedScale);
+          model.position.y = -2;
           scene.add(model);
           
           // Setup scroll listener after model is loaded
@@ -220,7 +235,26 @@
             
             // Ensure camera is at first step position after everything is ready
             setTimeout(() => {
+              // Debug: check what the first step position should be
+              if (storySteps.length > 0) {
+                const firstStep = storySteps[0];
+                console.log('ScrollyD First step:', firstStep);
+                console.log('ScrollyD BaseDistance:', baseDistance);
+                console.log('ScrollyD Expected position:', {
+                  x: firstStep.cameraPosition[0] * baseDistance,
+                  y: firstStep.cameraPosition[1] * baseDistance,
+                  z: firstStep.cameraPosition[2] * baseDistance
+                });
+              }
+              
               updateCameraFromGlobalProgress(0);
+              
+              // Debug: check actual camera position after update
+              console.log('ScrollyD Actual camera position:', {
+                x: camera.position.x,
+                y: camera.position.y,
+                z: camera.position.z
+              });
               
               // Now that everything is ready, show the canvas
               isLoading = false;
@@ -256,14 +290,22 @@
       // Handle window resize
       resizeHandler = () => {
         if (camera && renderer) {
-          const visWidth = window.innerWidth > 768 ? window.innerWidth * 0.7 : window.innerWidth;
-          camera.aspect = visWidth / window.innerHeight;
+          const visWidth = window.innerWidth; // Full width
+          const isMobile = window.innerWidth <= 768;
+          const aspectWidth = isMobile ? visWidth : visWidth * 0.6; // Full width on mobile, 60vw on desktop
+          camera.aspect = aspectWidth / window.innerHeight;
           camera.updateProjectionMatrix();
           renderer.setSize(visWidth, window.innerHeight);
           
-          // Keep model at natural 1:1 scale on resize
+          // Update viewport based on device
+          const leftOffset = isMobile ? 0 : window.innerWidth * 0.4; // No offset on mobile
+          const rightWidth = isMobile ? window.innerWidth : window.innerWidth * 0.6; // Full width on mobile
+          renderer.setViewport(leftOffset, 0, rightWidth, window.innerHeight);
+          
+          // Keep model scale consistent on resize
           if (model) {
-            model.scale.set(1, 1, 1);
+            const fixedScale = 0.04; // Same smaller fixed scale
+            model.scale.set(fixedScale, fixedScale, fixedScale);
             
             // Trigger initial scroll update
             setTimeout(() => {
@@ -344,14 +386,13 @@
   .section-container { 
     position: relative; 
     width: 100vw; 
-    height: 100vh;
     font-family: 'Montserrat', sans-serif;
     margin: 0;
     padding: 0;
   }
   
   .sticky-background {
-    position: fixed; 
+    position: sticky; 
     top: 0; 
     left: 0;
     height: 100vh; 
@@ -363,7 +404,7 @@
   .vis-container {
     position: absolute; 
     top: 0; 
-    left: 30vw; 
+    left: 0; 
     right: 0; 
     bottom: 0; 
     overflow: hidden;
@@ -383,6 +424,7 @@
     top: 0;
     margin: 0;
     padding: 0;
+    margin-top: -100vh;
   }
   
   .step {
@@ -469,7 +511,7 @@
   
   @media (max-width: 768px) {
     .sticky-background {
-      position: fixed;
+      position: sticky;
       top: 0;
       left: 0;
       width: 100vw;
