@@ -19,7 +19,7 @@ An interactive 3D scrollytelling experience built with Svelte 5, Three.js, and W
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 20+ 
 - npm or yarn
 - Modern web browser with WebGL support
 
