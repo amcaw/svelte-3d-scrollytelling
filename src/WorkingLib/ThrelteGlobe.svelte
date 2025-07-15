@@ -13,7 +13,7 @@
   let initialized = false;
   let controls: any;
   let globalScrollProgress = 0; // 0-1 progress through entire journey
-  let baseDistance = 15.0; // Base distance for responsive scaling (moderate distance for LittlestTokyo)
+  let baseDistance = 8.0; // Smaller base distance for better zoomed out view
   
 
 
@@ -293,7 +293,7 @@
           model = gltf.scene;
           
           // Set fixed model scale for consistency across devices
-          const fixedScale = 0.08; // Larger fixed scale for better visibility
+          const fixedScale = 0.04; // Much smaller scale to allow better zoom out
           model.scale.set(fixedScale, fixedScale, fixedScale);
           model.position.y = -2; // Lower the model slightly
           scene.add(model);
@@ -341,7 +341,7 @@
           
           // Keep model scale consistent on resize
           if (model) {
-            const fixedScale = 0.08; // Same fixed scale
+            const fixedScale = 0.04; // Same smaller fixed scale
             model.scale.set(fixedScale, fixedScale, fixedScale);
             
             // Update camera position to maintain current view

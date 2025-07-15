@@ -13,87 +13,40 @@
   let initialized = false;
   let controls: any;
   let globalScrollProgress = 0; // 0-1 progress through entire journey
-  let baseDistance = 15.0; // Base distance for responsive scaling (moderate distance for LittlestTokyo)
+  let baseDistance = 150.0; // Adjusted distance for 1:1 scale model
 
-  // Story steps with relative camera positions (will be multiplied by responsive distance)
-  const storySteps: Array<{
+  // Props for story steps
+  export let storySteps: Array<{
     title: string;
     content: string;
     cameraPosition: [number, number, number];
     cameraRotation: [number, number, number];
-  }> = [
-    {
-      title: "Front View",
-      content: "Starting our journey with a direct front view of the miniature town.",
-      cameraPosition: [0, 1, 3],
-      cameraRotation: [-0.3, 0, 0]
-    },
-    {
-      title: "Right Side",
-      content: "Moving to the right side to see the town from a different angle.",
-      cameraPosition: [2.1, 1, 2.1],
-      cameraRotation: [-0.3, 0.785, 0]
-    },
-    {
-      title: "Back View",
-      content: "Continuing around to view the town from behind.",
-      cameraPosition: [0, 1, -3],
-      cameraRotation: [-0.3, 3.14, 0]
-    },
-    {
-      title: "Left Side",
-      content: "Completing the orbit by viewing from the left side.",
-      cameraPosition: [-2.1, 1, 2.1],
-      cameraRotation: [-0.3, -0.785, 0]
-    },
-    {
-      title: "Elevated View",
-      content: "Rising up for a higher perspective of the entire town layout.",
-      cameraPosition: [0, 2.5, 3],
-      cameraRotation: [-0.6, 0, 0]
-    },
-    {
-      title: "Close Detail",
-      content: "Moving in closer to explore the intricate architectural details.",
-      cameraPosition: [1, 0.5, 2],
-      cameraRotation: [-0.2, 0.4, 0]
-    },
-    {
-      title: "Final Overview",
-      content: "Ending with a comprehensive view that showcases the entire miniature world.",
-      cameraPosition: [0, 1.5, 3.5],
-      cameraRotation: [-0.4, 0, 0]
-    }
-  ];
+  }> = [];
 
   function setupScrollListener() {
-    // Set initial camera position smoothly
+    // Ensure camera starts at exact first step position
     globalScrollProgress = 0;
     updateCameraFromGlobalProgress(0);
     
     function updateCameraFromScroll() {
       if (!camera) return;
       
-      const storyContainer = document.querySelector('.story-container');
+      const storyContainer = document.querySelector('.foreground');
       if (!storyContainer) return;
       
       // Use more precise scroll calculation
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      const windowHeight = window.innerHeight;
       
       // Calculate scroll progress based on story container position
-      const containerRect = storyContainer.getBoundingClientRect();
-      const containerTop = scrollTop + containerRect.top;
       const containerHeight = storyContainer.scrollHeight;
       
-      // Start progress when container enters viewport, end when it exits
-      const scrollStart = Math.max(0, containerTop - windowHeight);
-      const scrollEnd = containerTop + containerHeight;
+      // Start progress at the very beginning of the page
+      const scrollStart = 0;
+      const scrollEnd = containerHeight;
       const scrollRange = scrollEnd - scrollStart;
       
-      // Calculate smooth progress
-      const currentScroll = scrollTop + windowHeight / 2;
-      const rawProgress = (currentScroll - scrollStart) / scrollRange;
+      // Calculate progress directly from scroll position
+      const rawProgress = scrollTop / scrollRange;
       
       // Apply smooth clamping without hard stops
       const oldProgress = globalScrollProgress;
@@ -132,7 +85,6 @@
     
     // Calculate which segment of the path we're in
     const numSegments = storySteps.length - 1;
-    const segmentLength = 1 / numSegments;
     
     // Find the two keyframes we're interpolating between
     let fromIndex, toIndex, localProgress;
@@ -215,28 +167,16 @@
       // Create scene
       scene = new THREE.Scene();
       
-      // Create camera with initial position at first step
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      // Create camera with aspect ratio adjusted for the actual vis-container width
+      const visWidth = window.innerWidth * 0.7; // 70vw since vis-container starts at 30vw
+      camera = new THREE.PerspectiveCamera(75, visWidth / window.innerHeight, 0.1, 1000);
       
-      // Set camera to first step position
-      const firstStep = storySteps[0];
-      camera.position.set(
-        firstStep.cameraPosition[0] * baseDistance,
-        firstStep.cameraPosition[1] * baseDistance,
-        firstStep.cameraPosition[2] * baseDistance
-      );
-      camera.rotation.set(
-        firstStep.cameraRotation[0],
-        firstStep.cameraRotation[1],
-        firstStep.cameraRotation[2]
-      );
-      
-      // Initialize global scroll progress
+      // Initialize global scroll progress (camera will be set by scroll listener)
       globalScrollProgress = 0;
       
-      // Create renderer
+      // Create renderer with size adjusted for vis-container
       renderer = new THREE.WebGLRenderer({ canvas: canvasElement, antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(visWidth, window.innerHeight);
       renderer.setClearColor(0x1a1a2e);
       
       // Setup OrbitControls for mouse interaction
@@ -268,19 +208,26 @@
         (gltf) => {
           model = gltf.scene;
           
-          // Set fixed model scale for consistency across devices
-          const fixedScale = 0.08;
-          model.scale.set(fixedScale, fixedScale, fixedScale);
-          model.position.y = -2;
+          // Keep model at natural 1:1 scale to avoid distortion
+          model.scale.set(1, 1, 1);
+          model.position.y = 0;
           scene.add(model);
           
           // Setup scroll listener after model is loaded
           setTimeout(() => {
             const cleanup = setupScrollListener();
             window.addEventListener('beforeunload', cleanup);
-          }, 100);
+            
+            // Ensure camera is at first step position after everything is ready
+            setTimeout(() => {
+              updateCameraFromGlobalProgress(0);
+              
+              // Now that everything is ready, show the canvas
+              isLoading = false;
+            }, 100);
+          }, 200);
         },
-        (progress) => {
+        (_progressEvent) => {
           // Loading progress (silent)
         },
         (error) => {
@@ -309,14 +256,14 @@
       // Handle window resize
       resizeHandler = () => {
         if (camera && renderer) {
-          camera.aspect = window.innerWidth / window.innerHeight;
+          const visWidth = window.innerWidth > 768 ? window.innerWidth * 0.7 : window.innerWidth;
+          camera.aspect = visWidth / window.innerHeight;
           camera.updateProjectionMatrix();
-          renderer.setSize(window.innerWidth, window.innerHeight);
+          renderer.setSize(visWidth, window.innerHeight);
           
-          // Keep model scale consistent on resize
+          // Keep model at natural 1:1 scale on resize
           if (model) {
-            const fixedScale = 0.08; // Same fixed scale
-            model.scale.set(fixedScale, fixedScale, fixedScale);
+            model.scale.set(1, 1, 1);
             
             // Trigger initial scroll update
             setTimeout(() => {
@@ -328,8 +275,6 @@
       };
       
       window.addEventListener('resize', resizeHandler);
-      
-      isLoading = false;
     } catch (error) {
       hasError = true;
       isLoading = false;
@@ -358,29 +303,30 @@
   });
 </script>
 
-<div class="scrollytelling-container">
-  <!-- Fixed 3D model in background -->
-  <div class="threlte-fixed">
-    <canvas bind:this={canvasElement} class="three-canvas" style="display: {isLoading || hasError ? 'none' : 'block'}"></canvas>
-    
-    {#if isLoading}
-      <div class="loading-fallback">
-        <h2>Loading 3D Model...</h2>
-        <p>Initializing Three.js and loading GLB model</p>
-      </div>
-    {:else if hasError}
-      <div class="error-fallback">
-        <h2>3D Model Error</h2>
-        <p>{errorMessage}</p>
-        <p>Please check the console for details</p>
-      </div>
-    {/if}
+<section class="section-container">
+  <!-- Fixed 3D model in sticky background -->
+  <div class="sticky-background">
+    <div class="vis-container">
+      <canvas bind:this={canvasElement} class="three-canvas" style="display: {isLoading || hasError ? 'none' : 'block'}"></canvas>
+      
+      {#if isLoading}
+        <div class="loading-fallback">
+          <div class="loader-spinner"></div>
+        </div>
+      {:else if hasError}
+        <div class="error-fallback">
+          <h2>3D Model Error</h2>
+          <p>{errorMessage}</p>
+          <p>Please check the console for details</p>
+        </div>
+      {/if}
+    </div>
   </div>
 
   <!-- Story steps in foreground -->
-  <div class="story-container">
+  <div class="foreground" style="display: {isLoading ? 'none' : 'block'}">
     {#each storySteps as step, index}
-      <div class="story-step" data-step={index}>
+      <div class="step" data-step={index}>
         <div class="step-content">
           <h2>{step.title}</h2>
           <p>{step.content}</p>
@@ -388,30 +334,38 @@
       </div>
     {/each}
   </div>
-</div>
+</section>
 
 <style>
-  :global(body) {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :global(body) { overflow-x: hidden; margin: 0; padding: 0; }
+  :global(html) { margin: 0; padding: 0; }
+  
+  .section-container { 
+    position: relative; 
+    width: 100vw; 
+    height: 100vh;
+    font-family: 'Montserrat', sans-serif;
     margin: 0;
     padding: 0;
-    overflow-x: hidden;
   }
   
-  .scrollytelling-container {
-    position: relative;
-    width: 100%;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-  
-  .threlte-fixed {
-    position: fixed;
-    top: 0;
+  .sticky-background {
+    position: fixed; 
+    top: 0; 
     left: 0;
-    width: 100vw;
-    height: 100vh;
+    height: 100vh; 
+    width: 100vw; 
     z-index: 1;
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  }
+  
+  .vis-container {
+    position: absolute; 
+    top: 0; 
+    left: 30vw; 
+    right: 0; 
+    bottom: 0; 
     overflow: hidden;
   }
   
@@ -421,34 +375,43 @@
     height: 100%;
   }
   
-  .story-container {
-    position: relative;
-    z-index: 2;
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
+  .foreground {
+    position: relative; 
+    z-index: 2; 
+    width: 40vw;
+    left: 0;
+    top: 0;
+    margin: 0;
+    padding: 0;
   }
   
-  .story-step {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    padding: 2rem;
-    margin-left: 50%;
-    width: 45%;
-    box-sizing: border-box;
+  .step {
+    width: 100%; 
+    height: 100vh;
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+    padding: 1rem;
+    margin: 0;
   }
   
   .step-content {
-    background: rgba(255, 255, 255, 0.95);
-    padding: 2rem;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    background-color: rgba(255, 255, 255, 0.95); 
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
+    color: black;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    max-width: 400px;
-    box-sizing: border-box;
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    z-index: 10;
+    text-align: left;
+    width: 90%;
+    max-width: none;
+    margin: 0 auto;
   }
   
   .step-content h2 {
@@ -477,10 +440,18 @@
     padding: 2rem;
   }
   
-  .loading-fallback h2 {
-    font-size: 2rem;
-    margin-bottom: 1rem;
-    color: #4a90e2;
+  .loader-spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top: 3px solid #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
   
   .error-fallback h2 {
@@ -489,7 +460,6 @@
     color: #ff6b6b;
   }
   
-  .loading-fallback p,
   .error-fallback p {
     font-size: 1.1rem;
     margin-bottom: 1rem;
@@ -498,39 +468,32 @@
 
   
   @media (max-width: 768px) {
-    .story-step {
-      margin-left: 0;
-      width: 100%;
-      justify-content: center;
-      padding: 1rem;
-      box-sizing: border-box;
+    .sticky-background {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+    }
+    
+    .vis-container {
+      left: 0;
+    }
+    
+    .foreground {
+      width: 100vw;
+      margin-top: 0;
+    }
+    
+    .step {
+      height: 100vh;
     }
     
     .step-content {
-      max-width: 90%;
-      margin: 0 auto;
-      box-sizing: border-box;
-    }
-    
-    .step-content h2 {
-      font-size: 1.5rem;
-    }
-    
-    .step-content p {
-      font-size: 1rem;
-    }
-  }
-  
-  @media (max-width: 480px) {
-    .story-step {
-      padding: 0.5rem;
-      box-sizing: border-box;
-    }
-    
-    .step-content {
-      padding: 1.5rem;
-      max-width: 95%;
-      box-sizing: border-box;
+      font-size: 1rem; 
+      padding: 1rem; 
+      width: 95%;
+      background-color: rgba(255, 255, 255, 0.9);
     }
     
     .step-content h2 {
@@ -539,6 +502,22 @@
     
     .step-content p {
       font-size: 0.9rem;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .step-content {
+      padding: 0.8rem;
+      width: 95%;
+      font-size: 0.8rem;
+    }
+    
+    .step-content h2 {
+      font-size: 1.1rem;
+    }
+    
+    .step-content p {
+      font-size: 0.8rem;
     }
   }
 </style>
