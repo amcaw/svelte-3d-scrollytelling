@@ -643,7 +643,6 @@
     
     .foreground {
       width: 100vw;
-      margin-top: 0;
     }
     
     .step {
