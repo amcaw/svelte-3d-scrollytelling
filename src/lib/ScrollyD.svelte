@@ -59,7 +59,7 @@
       const oldProgress = globalScrollProgress;
       globalScrollProgress = Math.max(0, Math.min(1, rawProgress));
       
-      // Only update if there's a meaningful change
+      // Use smaller threshold for smoother updates but add momentum
       if (Math.abs(oldProgress - globalScrollProgress) > 0.001) {
         updateCameraFromGlobalProgress(globalScrollProgress);
       }
@@ -136,9 +136,19 @@
       position[2] * baseDistance
     ];
     
-    // Update camera position and rotation smoothly
-    camera.position.set(scaledPosition[0], scaledPosition[1], scaledPosition[2]);
-    camera.rotation.set(rotation[0], rotation[1], rotation[2]);
+    // Use lerp for smoother camera movement
+    const lerpFactor = 0.15; // Adjust for smoothness vs responsiveness
+    camera.position.lerp({
+      x: scaledPosition[0],
+      y: scaledPosition[1], 
+      z: scaledPosition[2]
+    }, lerpFactor);
+    
+    // Smooth rotation interpolation
+    const targetRotation = { x: rotation[0], y: rotation[1], z: rotation[2] };
+    camera.rotation.x += (targetRotation.x - camera.rotation.x) * lerpFactor;
+    camera.rotation.y += (targetRotation.y - camera.rotation.y) * lerpFactor;
+    camera.rotation.z += (targetRotation.z - camera.rotation.z) * lerpFactor;
   }
   
   function easeInOutCubic(t: number): number {
@@ -235,26 +245,19 @@
             
             // Ensure camera is at first step position after everything is ready
             setTimeout(() => {
-              // Debug: check what the first step position should be
+              // Set camera directly to first position without lerp for initial load
               if (storySteps.length > 0) {
                 const firstStep = storySteps[0];
-                console.log('ScrollyD First step:', firstStep);
-                console.log('ScrollyD BaseDistance:', baseDistance);
-                console.log('ScrollyD Expected position:', {
-                  x: firstStep.cameraPosition[0] * baseDistance,
-                  y: firstStep.cameraPosition[1] * baseDistance,
-                  z: firstStep.cameraPosition[2] * baseDistance
-                });
+                const initialPosition = [
+                  firstStep.cameraPosition[0] * baseDistance,
+                  firstStep.cameraPosition[1] * baseDistance,
+                  firstStep.cameraPosition[2] * baseDistance
+                ];
+                
+                // Set camera position and rotation directly (no lerp on initial load)
+                camera.position.set(initialPosition[0], initialPosition[1], initialPosition[2]);
+                camera.rotation.set(firstStep.cameraRotation[0], firstStep.cameraRotation[1], firstStep.cameraRotation[2]);
               }
-              
-              updateCameraFromGlobalProgress(0);
-              
-              // Debug: check actual camera position after update
-              console.log('ScrollyD Actual camera position:', {
-                x: camera.position.x,
-                y: camera.position.y,
-                z: camera.position.z
-              });
               
               // Now that everything is ready, show the canvas
               isLoading = false;
